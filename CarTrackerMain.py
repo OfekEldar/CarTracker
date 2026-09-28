@@ -6,7 +6,7 @@ import streamlit as st
 
 # ================= Page Config =================
 st.set_page_config(
-    page_title="Vehicle Tracker & Control",
+    page_title="Triton Tracker & Control",
     page_icon="🚗",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -31,18 +31,15 @@ def check_password():
         return False
     return True
 
-# עצירת טעינת האפליקציה אם הסיסמה שגויה או טרם הוזנה
 if not check_password():
     st.stop()
 
 # ================= System & MQTT Settings =================
-
 MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT = 1883
 CMD_TOPIC = "ofek/cmd10"
 STATUS_TOPIC = "ofek/status"
 
-# קריאת מספר הטלפון בצורה מאובטחת (לא חשוף ב-GitHub)
 TARGET_PHONE = st.secrets["TARGET_PHONE"]
 
 # ================= Initialize Session State =================
@@ -54,6 +51,8 @@ if "last_update" not in st.session_state:
     st.session_state.last_update = "No data yet"
 if "sms_alert" not in st.session_state:
     st.session_state.sms_alert = False
+if "gps_status" not in st.session_state:
+    st.session_state.gps_status = "WAITING"
 
 # ================= MQTT Functions =================
 def on_connect(client, userdata, flags, reason_code, properties=None):
@@ -69,7 +68,7 @@ def on_publish(client, userdata, mid, reason_code=None, properties=None):
 def on_message(client, userdata, msg):
     try:
         payload_str = msg.payload.decode("utf-8").strip()
-        print(f"[MQTT IN] {payload_str}") # לוג לדיבאג
+        print(f"[MQTT IN] {payload_str}") 
 
         # 1. זיהוי פקודות ריליי
         if "RELAY_IS_ON" in payload_str:
@@ -86,26 +85,29 @@ def on_message(client, userdata, msg):
             st.session_state.last_update = time.strftime("%H:%M:%S")
             st.session_state.gps_status = "NO_FIX"
             
-        # 3. זיהוי מחרוזת GPS תקינה (מתחילה בדרך כלל בסטטוס הפיקס, למשל '3,' או '2,')
-        # לדוגמה: 3,08,02,00,3205.1234,N,03448.5678,E...
+        # 3. זיהוי קואורדינטות בפורמט NMEA
         elif ",N," in payload_str or ",S," in payload_str:
             parts = payload_str.split(',')
             
-            # וידוא שיש לנו מספיק נתונים במחרוזת
-            if len(parts) >= 8 and parts[4] and parts[6]:
-                lat_str = parts[4] # "3205.1234"
-                lat_dir = parts[5] # "N"
-                lon_str = parts[6] # "03448.5678"
-                lon_dir = parts[7] # "E"
+            # חיפוש דינאמי של מיקום המעלות כדי למנוע קריסה מול שינויי פורמט ב-SIM7600
+            dir_lat_idx = -1
+            for i, p in enumerate(parts):
+                if p in ['N', 'S']:
+                    dir_lat_idx = i
+                    break
+            
+            if dir_lat_idx > 0 and len(parts) > dir_lat_idx + 2:
+                lat_str = parts[dir_lat_idx - 1] 
+                lat_dir = parts[dir_lat_idx]     
+                lon_str = parts[dir_lat_idx + 1] 
+                lon_dir = parts[dir_lat_idx + 2] 
 
-                # המרה מפורמט NMEA לפורמט עשרוני של Google Maps
-                # Latitude: DDMM.MMMM -> DD.DDDD
+                # המרה מפורמט NMEA למעלות עשרוניות
                 lat_deg = float(lat_str[:2])
                 lat_min = float(lat_str[2:])
                 lat_dec = lat_deg + (lat_min / 60.0)
                 if lat_dir == 'S': lat_dec = -lat_dec
 
-                # Longitude: DDDMM.MMMM -> DD.DDDD
                 lon_deg = float(lon_str[:3])
                 lon_min = float(lon_str[3:])
                 lon_dec = lon_deg + (lon_min / 60.0)
@@ -119,7 +121,7 @@ def on_message(client, userdata, msg):
                 st.session_state.gps_status = "OK"
                 st.session_state.last_update = time.strftime("%H:%M:%S")
 
-        # 4. תמיכה לאחור ב-JSON (אם בכל זאת הוספת את זה ב-ESP)
+        # 4. תמיכה ב-JSON
         elif payload_str.startswith("{"):
             data = json.loads(payload_str)
             if "relay" in data:
@@ -131,6 +133,7 @@ def on_message(client, userdata, msg):
                     "lon": lon,
                     "maps_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
                 }
+                st.session_state.gps_status = "OK"
             st.session_state.last_update = time.strftime("%H:%M:%S")
 
     except Exception as e:
@@ -140,7 +143,7 @@ def on_message(client, userdata, msg):
 def get_mqtt_client():
     client = mqtt.Client(
         callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-        client_id=f"streamlit_client_{int(time.time())}"  # ID ייחודי בכל הרצה למניעת התנגשויות
+        client_id=f"streamlit_client_{int(time.time())}"  
     )
     client.on_connect = on_connect
     client.on_message = on_message
@@ -149,7 +152,7 @@ def get_mqtt_client():
     try:
         client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
         client.loop_start()
-        time.sleep(1)  # המתנה קצרה לווידוא סיום ה-Handshake
+        time.sleep(1)  
         print("[MQTT] Client initialized and loop started.")
     except Exception as e:
         print(f"[MQTT ERROR] Connection failed: {e}")
@@ -161,13 +164,13 @@ mqtt_client = get_mqtt_client()
 def send_command(cmd: str):
     if mqtt_client:
         msg_info = mqtt_client.publish(CMD_TOPIC, cmd, qos=0)
-        msg_info.wait_for_publish(timeout=3.0)  # המתנה לווידוא יציאת ההודעה
+        msg_info.wait_for_publish(timeout=3.0)  
         if msg_info.is_published():
             print(f"[MQTT OUT] Sent command: {cmd}")
-            st.toast(f"sucsessfully sent {cmd}", icon="🚀")
+            st.toast(f"Successfully sent: {cmd}", icon="🚀")
         else:
             print(f"[MQTT OUT] Failed to publish: {cmd}")
-            st.error("messenge send failed (Timeout")
+            st.error("Message send failed (Timeout)")
 
 # ================= User Interface (GUI) =================
 st.title("🚗 Vehicle Tracker & Control")
@@ -195,17 +198,18 @@ btn_col1, btn_col2 = st.columns(2)
 with btn_col1:
     if st.button("⚡ Enable Pump (ON)", use_container_width=True, type="primary"):
         send_command("RELAY_ON")
-        st.toast("Enable command sent...")
 with btn_col2:
     if st.button("⛔ Disable Pump (OFF)", use_container_width=True):
         send_command("RELAY_OFF")
-        st.toast("Disable command sent...")
 
 st.divider()
 st.subheader("📍 Vehicle Location")
 if st.button("🛰️ Fetch Current Location (Get GPS)", use_container_width=True):
     send_command("GET_GPS")
-    st.toast("Location request sent to module...")
+    st.session_state.gps_status = "WAITING"
+
+if st.session_state.gps_status == "NO_FIX":
+    st.warning("⚠️ לא ניתן לנעול לוויינים (GPS No Fix). ייתכן שהרכב במקום סגור.")
 
 if st.session_state.last_gps:
     gps_data = st.session_state.last_gps
@@ -214,8 +218,9 @@ if st.session_state.last_gps:
     col_lat.metric("Latitude", f"{lat:.5f}")
     col_lon.metric("Longitude", f"{lon:.5f}")
     st.link_button("🗺️ Open in Google Maps", url=maps_url, type="secondary", use_container_width=True)
+    
     map_df = pd.DataFrame({"lat": [lat], "lon": [lon]})
-    st.map(map_df, zoom=15)
+    st.map(map_df, zoom=15, color='#0044ff')
 else:
     st.info("No location saved yet. Click 'Fetch Current Location' to get coordinates.")
 
