@@ -36,7 +36,7 @@ if not check_password():
     st.stop()
 
 # ================= System & MQTT Settings =================
-MQTT_BROKER = "test.mosquitto.org"
+MQTT_BROKER = "tcp://test.mosquitto.org:1883"
 MQTT_PORT = 1883
 CMD_TOPIC = "ofek/cmd10"
 STATUS_TOPIC = "ofek/status"
