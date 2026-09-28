@@ -123,18 +123,25 @@ def on_message(client, userdata, msg):
 
         # 4. תמיכה ב-JSON
         elif payload_str.startswith("{"):
-            data = json.loads(payload_str)
-            if "relay" in data:
-                st.session_state.relay_state = data["relay"]
-            if "lat" in data and "lon" in data:
-                lat, lon = float(data["lat"]), float(data["lon"])
-                st.session_state.last_gps = {
-                    "lat": lat,
-                    "lon": lon,
-                    "maps_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-                }
-                st.session_state.gps_status = "OK"
-            st.session_state.last_update = time.strftime("%H:%M:%S")
+                    data = json.loads(payload_str)
+                    if "relay" in data:
+                        st.session_state.relay_state = data["relay"]
+                        
+                    # זיהוי סטטוס שאין קליטת GPS מתוך ה-JSON
+                    if "status" in data and data["status"] == "NO_FIX":
+                        st.session_state.gps_status = "NO_FIX"
+                        
+                    # זיהוי קואורדינטות מתוך ה-JSON (אם ה-ESP שולח אותן ככה)
+                    if "lat" in data and "lon" in data:
+                        lat, lon = float(data["lat"]), float(data["lon"])
+                        st.session_state.last_gps = {
+                            "lat": lat,
+                            "lon": lon,
+                            "maps_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+                        }
+                        st.session_state.gps_status = "OK"
+                        
+                    st.session_state.last_update = time.strftime("%H:%M:%S")
 
     except Exception as e:
         print(f"[MQTT ERROR] Failed to parse message: {e}")
