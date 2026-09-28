@@ -62,32 +62,73 @@ def on_connect(client, userdata, flags, reason_code, properties=None):
 
 def on_message(client, userdata, msg):
     try:
-        payload_str = msg.payload.decode("utf-8")
-        if payload_str.startswith("{"):
+        payload_str = msg.payload.decode("utf-8").strip()
+        print(f"[MQTT IN] {payload_str}") # לוג לדיבאג
+
+        # 1. זיהוי פקודות ריליי
+        if "RELAY_IS_ON" in payload_str:
+            st.session_state.relay_state = "ENABLED"
+            st.session_state.sms_alert = True
+            st.session_state.last_update = time.strftime("%H:%M:%S")
+            
+        elif "RELAY_IS_OFF" in payload_str:
+            st.session_state.relay_state = "DISABLED"
+            st.session_state.last_update = time.strftime("%H:%M:%S")
+            
+        # 2. זיהוי שגיאת GPS
+        elif "GPS_NO_FIX" in payload_str:
+            st.session_state.last_update = time.strftime("%H:%M:%S")
+            st.session_state.gps_status = "NO_FIX"
+            
+        # 3. זיהוי מחרוזת GPS תקינה (מתחילה בדרך כלל בסטטוס הפיקס, למשל '3,' או '2,')
+        # לדוגמה: 3,08,02,00,3205.1234,N,03448.5678,E...
+        elif ",N," in payload_str or ",S," in payload_str:
+            parts = payload_str.split(',')
+            
+            # וידוא שיש לנו מספיק נתונים במחרוזת
+            if len(parts) >= 8 and parts[4] and parts[6]:
+                lat_str = parts[4] # "3205.1234"
+                lat_dir = parts[5] # "N"
+                lon_str = parts[6] # "03448.5678"
+                lon_dir = parts[7] # "E"
+
+                # המרה מפורמט NMEA לפורמט עשרוני של Google Maps
+                # Latitude: DDMM.MMMM -> DD.DDDD
+                lat_deg = float(lat_str[:2])
+                lat_min = float(lat_str[2:])
+                lat_dec = lat_deg + (lat_min / 60.0)
+                if lat_dir == 'S': lat_dec = -lat_dec
+
+                # Longitude: DDDMM.MMMM -> DD.DDDD
+                lon_deg = float(lon_str[:3])
+                lon_min = float(lon_str[3:])
+                lon_dec = lon_deg + (lon_min / 60.0)
+                if lon_dir == 'W': lon_dec = -lon_dec
+
+                st.session_state.last_gps = {
+                    "lat": lat_dec,
+                    "lon": lon_dec,
+                    "maps_url": f"https://www.google.com/maps/search/?api=1&query={lat_dec},{lon_dec}"
+                }
+                st.session_state.gps_status = "OK"
+                st.session_state.last_update = time.strftime("%H:%M:%S")
+
+        # 4. תמיכה לאחור ב-JSON (אם בכל זאת הוספת את זה ב-ESP)
+        elif payload_str.startswith("{"):
             data = json.loads(payload_str)
             if "relay" in data:
-                old_state = st.session_state.relay_state
                 st.session_state.relay_state = data["relay"]
-                if data["relay"] == "ENABLED" and old_state != "ENABLED":
-                    st.session_state.sms_alert = True
             if "lat" in data and "lon" in data:
                 lat, lon = float(data["lat"]), float(data["lon"])
                 st.session_state.last_gps = {
                     "lat": lat,
                     "lon": lon,
-                    "speed": data.get("speed_knots", "0"),
-                    "maps_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}",
+                    "maps_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
                 }
             st.session_state.last_update = time.strftime("%H:%M:%S")
-        elif "RELAY_IS_ON" in payload_str:
-            st.session_state.relay_state = "ENABLED"
-            st.session_state.sms_alert = True
-            st.session_state.last_update = time.strftime("%H:%M:%S")
-        elif "RELAY_IS_OFF" in payload_str:
-            st.session_state.relay_state = "DISABLED"
-            st.session_state.last_update = time.strftime("%H:%M:%S")
+
     except Exception as e:
-        print(f"[MQTT ERROR] {e}")
+        print(f"[MQTT ERROR] Failed to parse message: {e}")
 
 @st.cache_resource
 def get_mqtt_client():
