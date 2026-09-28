@@ -12,11 +12,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ================= Default Parking Location =================
-# Replace these with the exact coordinates of your underground parking
-DEFAULT_PARKING_LAT = 32.063084  # <-- Enter Latitude here
-DEFAULT_PARKING_LON = 34.826604  # <-- Enter Longitude here
-
 # ================= Security & Login =================
 def check_password():
     def password_entered():
@@ -50,13 +45,7 @@ TARGET_PHONE = st.secrets["TARGET_PHONE"]
 if "relay_state" not in st.session_state:
     st.session_state.relay_state = "UNKNOWN"
 if "last_gps" not in st.session_state:
-    # Initialize with default parking location
-    st.session_state.last_gps = {
-        "lat": DEFAULT_PARKING_LAT,
-        "lon": DEFAULT_PARKING_LON,
-        "maps_url": f"https://www.google.com/maps/search/?api=1&query={DEFAULT_PARKING_LAT},{DEFAULT_PARKING_LON}",
-        "is_default": True
-    }
+    st.session_state.last_gps = None
 if "last_update" not in st.session_state:
     st.session_state.last_update = "No data yet"
 if "sms_alert" not in st.session_state:
@@ -129,8 +118,7 @@ if shared_state["is_new"]:
                 st.session_state.last_gps = {
                     "lat": float(data["lat"]),
                     "lon": float(data["lon"]),
-                    "maps_url": data.get("maps", f"https://www.google.com/maps/search/?api=1&query={data['lat']},{data['lon']}"),
-                    "is_default": False  # Flag that this is a real location, not the default parking
+                    "maps_url": data.get("maps", f"https://www.google.com/maps/search/?api=1&query={data['lat']},{data['lon']}")
                 }
                 st.session_state.gps_status = "OK"
                 
@@ -187,24 +175,22 @@ if st.button("🛰️ Fetch Current Location (Get GPS)", use_container_width=Tru
     time.sleep(3)
     st.rerun()
 
-# Dynamic GPS Warning based on default state vs last known state
 if st.session_state.gps_status == "NO_FIX":
-    if st.session_state.last_gps.get("is_default"):
-        st.warning("⚠️ GPS No Fix. The vehicle is likely in the underground parking. Showing default location.")
-    else:
-        st.warning("⚠️ GPS No Fix. Cannot lock onto satellites. Showing last known location.")
+    st.warning("⚠️ GPS No Fix. Cannot lock onto satellites. The vehicle might be indoors or underground.")
 
-# Always show the map (either default or last known)
-gps_data = st.session_state.last_gps
-lat, lon, maps_url = gps_data["lat"], gps_data["lon"], gps_data["maps_url"]
-
-col_lat, col_lon = st.columns(2)
-col_lat.metric("Latitude", f"{lat:.5f}")
-col_lon.metric("Longitude", f"{lon:.5f}")
-st.link_button("🗺️ Open in Google Maps", url=maps_url, type="secondary", use_container_width=True)
-
-map_df = pd.DataFrame({"lat": [lat], "lon": [lon]})
-st.map(map_df, zoom=15, color='#0044ff')
+if st.session_state.last_gps:
+    gps_data = st.session_state.last_gps
+    lat, lon, maps_url = gps_data["lat"], gps_data["lon"], gps_data["maps_url"]
+    
+    col_lat, col_lon = st.columns(2)
+    col_lat.metric("Latitude", f"{lat:.5f}")
+    col_lon.metric("Longitude", f"{lon:.5f}")
+    st.link_button("🗺️ Open in Google Maps", url=maps_url, type="secondary", use_container_width=True)
+    
+    map_df = pd.DataFrame({"lat": [lat], "lon": [lon]})
+    st.map(map_df, zoom=15, color='#0044ff')
+else:
+    st.info("No location saved yet. Click 'Fetch Current Location' to get coordinates.")
 
 st.divider()
 if st.button("🔄 Refresh UI", use_container_width=True):
