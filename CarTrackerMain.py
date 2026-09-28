@@ -38,7 +38,7 @@ if not check_password():
     st.stop()
 
 # ================= System & MQTT Settings =================
-MQTT_BROKER = "broker.emqx.io"
+MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT = 1883
 CMD_TOPIC = "ofek/cmd10"
 STATUS_TOPIC = "ofek/status"
