@@ -155,14 +155,14 @@ btn_col1, btn_col2 = st.columns(2)
 with btn_col1:
     if st.button("⚡ Enable Pump (ON)", use_container_width=True, type="primary"):
         send_command("RELAY_ON")
-        st.toast("⏳ ממתין לאישור הפעלה מהרכב...", icon="⏳")
+        st.toast("⏳ Waiting for activation confirmation...", icon="⏳")
         time.sleep(2)
         st.rerun()
         
 with btn_col2:
     if st.button("⛔ Disable Pump (OFF)", use_container_width=True):
         send_command("RELAY_OFF")
-        st.toast("⏳ ממתין לאישור כיבוי מהרכב...", icon="⏳")
+        st.toast("⏳ Waiting for deactivation confirmation...", icon="⏳")
         time.sleep(2)
         st.rerun()
 
@@ -171,12 +171,12 @@ st.subheader("📍 Vehicle Location")
 if st.button("🛰️ Fetch Current Location (Get GPS)", use_container_width=True):
     send_command("GET_GPS")
     st.session_state.gps_status = "WAITING"
-    st.toast("⏳ בודק קליטת לוויינים, נא להמתין...", icon="⏳")
+    st.toast("⏳ Querying GNSS satellites, please wait...", icon="⏳")
     time.sleep(3)
     st.rerun()
 
 if st.session_state.gps_status == "NO_FIX":
-    st.warning("⚠️ לא ניתן לנעול לוויינים (GPS No Fix). ייתכן שהרכב במקום סגור.")
+    st.warning("⚠️ GPS No Fix. Cannot lock onto satellites. The vehicle might be indoors or underground.")
 
 if st.session_state.last_gps:
     gps_data = st.session_state.last_gps
