@@ -37,7 +37,7 @@ if not check_password():
 
 # ================= System & MQTT Settings =================
 
-MQTT_BROKER = "broker.hivemq.com"
+MQTT_BROKER = "tcp://test.mosquitto.org:1883"
 MQTT_PORT = 1883
 CMD_TOPIC = "ofek/cmd10"
 STATUS_TOPIC = "ofek/status"
