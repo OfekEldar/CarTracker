@@ -59,7 +59,12 @@ if "sms_alert" not in st.session_state:
 def on_connect(client, userdata, flags, reason_code, properties=None):
     if reason_code == 0:
         client.subscribe(STATUS_TOPIC)
-        print(f"[MQTT] Subscribed to {STATUS_TOPIC}")
+        print(f"[MQTT] Connected & Subscribed to {STATUS_TOPIC}")
+    else:
+        print(f"[MQTT] Connection failed with code: {reason_code}")
+
+def on_publish(client, userdata, mid, reason_code=None, properties=None):
+    print(f"[MQTT] Message {mid} successfully published to broker!")
 
 def on_message(client, userdata, msg):
     try:
@@ -133,21 +138,36 @@ def on_message(client, userdata, msg):
 
 @st.cache_resource
 def get_mqtt_client():
-    client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id="streamlit_car_tracker_client")
+    client = mqtt.Client(
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+        client_id=f"streamlit_client_{int(time.time())}"  # ID ייחודי בכל הרצה למניעת התנגשויות
+    )
     client.on_connect = on_connect
     client.on_message = on_message
+    client.on_publish = on_publish
+    
     try:
         client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
         client.loop_start()
+        time.sleep(1)  # המתנה קצרה לווידוא סיום ה-Handshake
+        print("[MQTT] Client initialized and loop started.")
     except Exception as e:
-        print(f"[MQTT] Connection Error: {e}")
+        print(f"[MQTT ERROR] Connection failed: {e}")
+        
     return client
 
 mqtt_client = get_mqtt_client()
 
 def send_command(cmd: str):
     if mqtt_client:
-        mqtt_client.publish(CMD_TOPIC, cmd)
+        msg_info = mqtt_client.publish(CMD_TOPIC, cmd, qos=0)
+        msg_info.wait_for_publish(timeout=3.0)  # המתנה לווידוא יציאת ההודעה
+        if msg_info.is_published():
+            print(f"[MQTT OUT] Sent command: {cmd}")
+            st.toast(f"sucsessfully sent {cmd}", icon="🚀")
+        else:
+            print(f"[MQTT OUT] Failed to publish: {cmd}")
+            st.error("messenge send failed (Timeout")
 
 # ================= User Interface (GUI) =================
 st.title("🚗 Vehicle Tracker & Control")
